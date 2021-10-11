@@ -1,0 +1,45 @@
+import requests
+import json
+import os
+
+class ServiceNow(object):
+    def __init__(self):
+        self.user_id = os.getenv('servicenow_userid')
+        self.passwd = os.getenv('servicenow_password')
+        self.url = os.getenv('servicenow_url', 'https://www.service-now.com/')
+
+    def create_incident(self, req_body):
+        try:
+            print("req_body",req_body)
+            headers = {
+                'Accept': 'application/json',
+                'Content-Type': 'application/json'
+            }
+            url = "{url}api/now/import/u_incident".format(url=self.url)
+            print("url",url)
+            print("data", json.dumps(req_body))
+            r = requests.post(url, data=json.dumps(req_body), headers=headers,
+                              auth=(self.user_id, self.passwd), verify=False)
+            print(r.status_code,r.text)
+            if r.status_code in (200, 201, 202):
+                data = r.json()['result'][0]
+                return data['display_value']
+            else:
+                print('error in creating servicenow incident')
+                return None
+
+        except Exception as e:
+            raise e
+
+
+if __name__ == "__main__":
+    req_body = {
+        'u_type': 'break_fix',
+        'priority': '4',
+        'state': 'To Be Worked',
+        'assignment_group': "Group Name",
+        'description': "some description",
+        'short_description': "some description",
+    }
+    incident_id = ServiceNow().create_incident(req_body)
+    print(incident_id)
