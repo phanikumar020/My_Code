@@ -1,0 +1,97 @@
+from flask_restplus import Resource, fields, reqparse
+from flask import Response, request
+import json8
+import re
+from andromeda_py_auth import get_username, require_role
+from andromeda_py_logging import add_action
+
+_log_user = "User %s initiated POST %s"
+_log_body = "Post Body: %s"
+_all_users = ["ess_user", "nas_user"]
+response_body = {201: 'Success', 400: 'Bad Request', 401: 'Unauthorized', 500: 'Server Error'}
+_wrong_response_msg = Response(response=json.dumps({'status': 500, 'msg': 'Something went wrong.'}),
+                               status=500, content_type="application/json")
+
+
+def nfs_engine(i_detail):
+
+    _title = "title"
+    _description = "description"
+    _fields = "fields"
+    _desc = "desc"
+    _attributes = "attributes"
+    _target_url = 'target_url'
+    _route_url = 'route_url'
+    _desc = 'desc'
+    _business_method = 'business_method'
+    api_requests = {}
+
+    for a in i_detail[_attributes]:
+        api_fields = {}
+        api_model = {}
+        for f in a[_fields]:
+            if f['dataType'] == 'string':
+                api_fields[f[_title]] = fields.String(required=True if f['required'] == "True" else False,
+                                                      description=f[_description])
+            elif f['dataType'] == 'int':
+                api_fields[f[_title]] = fields.Integer(required=True if f['required'] == "True" else False,
+                                                       description=f[_description])
+            elif f['dataType'] == 'boolean':
+                api_fields[f[_title]] = fields.Boolean(required=True if f['required'] == "True" else False,
+                                                       description=f[_description])
+            api_model[f[_title]] = ''
+        api_requests[a['request_type']] = [api_fields, api_model, a[_desc], a[_route_url], a[_business_method]]
+
+    return api_requests
+
+
+def execute_method(self, **kwargs):
+    req_status = -1
+    if self.method_type == 'post':
+        add_action("Create Account", "Object Storage", "/storage-accounts", "POST", 'Test')
+        req_status = getattr(self.nas_connect, self.business_method)(self.parser.parse_args())
+    else:
+        add_action("Create Account", "Object Storage", "/storage-accounts", "GET", 'Test')
+        print(request.args.get('msId'))
+    if req_status != -1:
+        return Response(response=json.dumps({'status': 201, 'msg': req_status}),
+                        status=201, content_type="application/json")
+    else:
+        return _wrong_response_msg
+
+
+def setup_api(obj_namespace, detail_doc, nas_interface):
+    for method_name, method_detail in detail_doc.items():
+        attrib = {}
+        r_url = ''
+        dict_requests = nfs_engine(method_detail)
+        for dr_key, dr in dict_requests.items():
+            attrib['fie'], attrib['mod'], attrib['desc'], r_url, attrib['business_method'] = dr
+            if dr_key == 'post':
+                parser = reqparse.RequestParser()
+                for key, value in attrib['mod'].items():
+                    if value != '':
+                        parser.add_argument(key, type=eval(value), required=True)
+                    else:
+                        parser.add_argument(key, required=True)
+                    attrib['parser'] = parser
+            execute_methodx = (require_role(_all_users))(execute_method)
+            execute_methodx = (obj_namespace.doc(description=attrib['desc'], responses=response_body))(
+                execute_methodx)
+            if dr_key == 'post':
+                execute_methodx = (obj_namespace.expect(obj_namespace.model(attrib['desc'], attrib['fie']),
+                                                    validate=True))(execute_methodx)
+            attrib[dr_key] = execute_methodx
+            attrib['method_type'] = dr_key
+            attrib['nas_connect'] = nas_interface
+        method_class = type(method_name, (Resource,), attrib)
+        method_class = (obj_namespace.route(r_url, endpoint=method_name))(method_class)
+
+
+    # globals()[method_name] = method_class
+    # method_class()
+
+
+
+
+
