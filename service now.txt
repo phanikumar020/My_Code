@@ -25,7 +25,7 @@ class ServiceNow(object):
                 data = r.json()['result'][0]
                 return data['display_value']
             else:
-                print('error in creating servicenow incident')
+                print('error in creating servicenow incident please check')
                 return None
 
         except Exception as e:
